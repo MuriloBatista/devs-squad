@@ -205,7 +205,7 @@ begin
 
   try
     xJSONArray := TUtilBanco.ExecutarConsulta(
-      Format('SELECT * FROM %s WHERE id = %d',
+      Format('SELECT * FROM %s WHERE idusuario = %d',
       [FTabela, aIdUsuario]));
   except
     on e: Exception do
@@ -216,7 +216,7 @@ begin
     Exit(xJSONArray);
 
   xJSONArrayAux := TJSONArray.Create;
-
+  xJSONObject := TJSONObject.Create;
   for I := 0 to Pred(xJSONArray.Count) do
   begin
     xJSONObject := TJSONObject.ParseJSONValue(

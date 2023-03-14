@@ -1,4 +1,4 @@
-unit UService.Ocorrencia;
+ï»¿unit UService.Ocorrencia;
 
 interface
 
@@ -45,7 +45,10 @@ uses
   UUtils.Constants, DataSet.Serialize,
   FireDAC.comp.Client,
   UService.Intf, UService.Endereco,
-  UService.Usuario, UUtils.Functions;
+  UService.Usuario,
+  UUtils.Functions,
+  System.JSON, FMX.Dialogs,
+  DateUtils;
 
 { TServiceOcorrencia }
 
@@ -63,12 +66,12 @@ begin
     if xMemTable.RecordCount > 0 then
     begin
 
-      aEndereco := TEndereco.Create(xMemTable.FieldByName('Id').AsInteger,
-                                   xMemTable.FieldByName('Numero').AsInteger,
-                                   xMemTable.FieldByName('Cep').AsString,
-                                   xMemTable.FieldByName('Bairro').AsString,
-                                   xMemTable.FieldByName('Logradouro').AsString,
-                                   xMemTable.FieldByName('Complemento').AsString);
+      aEndereco := TEndereco.Create(xMemTable.FieldByName('Numero').AsInteger,
+                                    xMemTable.FieldByName('Cep').AsString,
+                                    xMemTable.FieldByName('Bairro').AsString,
+                                    xMemTable.FieldByName('Logradouro').AsString,
+                                    xMemTable.FieldByName('Complemento').AsString,
+                                    xMemTable.FieldByName('Id').AsInteger);
     end;
   finally
     FreeAndNil(xMemTable);
@@ -123,7 +126,7 @@ end;
 procedure TServiceOcorrencia.Excluir;
 begin
   if (not Assigned(FOcorrencia)) or (FOcorrencia.Id = 0) then
-    raise Exception.Create('Nenhum Palpite foi escolhido para exclusão.');
+    raise Exception.Create('Nenhum Palpite foi escolhido para exclusÃ£o.');
 
   try
     FRESTClient.BaseURL := Format(URL_BASE_OCORRENCIAS + '/%d', [FOcorrencia.Id]);
@@ -134,9 +137,9 @@ begin
       API_SUCESSO_SEM_RETORNO:
         Exit;
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('UsuÃ¡rio nÃ£o autorizado.');
       else
-        raise Exception.Create('Erro não catalogado.');
+        raise Exception.Create('Erro nÃ£o catalogado.');
     end;
   except
     on e: exception do
@@ -164,9 +167,9 @@ begin
       API_SUCESSO:
         Self.PreencherOcorrencias(FRESTResponse.Content);
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('UsuÃ¡rio nÃ£o autorizado.');
       else
-        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+        raise Exception.Create('Erro ao carregar a lista de Ocorrncias. CÃ³digo do Erro: ' + FRESTResponse.StatusCode.ToString);
     end;
   except
     on e: exception do
@@ -190,9 +193,9 @@ begin
       API_SUCESSO:
         Self.PreencherOcorrencias(FRESTResponse.Content);
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('UsuÃ¡rio nÃ£o autorizado.');
       else
-        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. CÃ³digo do Erro: ' + FRESTResponse.StatusCode.ToString);
     end;
   except
     on e: exception do
@@ -212,9 +215,9 @@ begin
       API_SUCESSO:
         Self.PreencherOcorrencias(FRESTResponse.Content);
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('UsuÃ¡rio nÃ£o autorizado.');
       else
-        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+        raise Exception.Create('Erro ao carregar a lista de OcorrÃªncias. CÃ³digo do Erro: ' + FRESTResponse.StatusCode.ToString);
     end;
   except
     on e: exception do
@@ -233,9 +236,9 @@ begin
       API_SUCESSO:
         Self.PreencherOcorrencias(FRESTResponse.Content);
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('Usuï¿½rio nï¿½o autorizado.');
       else
-        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Cï¿½digo do Erro: ' + FRESTResponse.StatusCode.ToString);
     end;
   except
     on e: exception do
@@ -285,9 +288,9 @@ begin
           end;
         end;
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('Usuï¿½rio nï¿½o autorizado.');
       else
-        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+        raise Exception.Create('Erro ao carregar a lista de Ocorrencias. Cï¿½digo do Erro: ' + FRESTResponse.StatusCode.ToString);
     end;
   except
     on e: exception do
@@ -297,56 +300,78 @@ end;
 
 procedure TServiceOcorrencia.PreencherOcorrencias(const aJsonOcorrencias: String);
 var
-  xMemTable: TFDMemTable;
-  xMemTableOcorrencia: TFDMemTable;
+  xJSON, xJSONAux: TJSONValue;
+  xArray: TJSONArray;
   xUsuario: TUsuario;
   xEndereco: TEndereco;
-
+  xDataNula: Boolean;
+  I: Integer;
+  xString: String;
+  xDataFinal, xDataAlteracao: TDateTime;
 begin
   FOcorrencias.Clear;
 
-  xMemTable     := TFDMemTable.Create(nil);
-  xMemTableOcorrencia := TFDMemTable.Create(nil);
+  xArray := TJSONArray.Create;
+  xJSON := TJSONValue.Create;
+  xJSONAux := TJSONValue.Create;
 
   try
-    xMemTable.LoadFromJSON(aJsonOcorrencias);
+    xArray := TJSONObject.ParseJSONValue(aJsonOcorrencias) as TJSONArray;
+    xJSON := xArray[0];
 
-    while not xMemTable.Eof do
+
+    for I := 0 to xArray.Count - 1 do
     begin
-      xMemTableOcorrencia.LoadFromJSON(xMemTable.FieldByName('usuario').AsString);
-      xUsuario := TUsuario.Create(xMemTableOcorrencia.FieldByName('id').AsInteger,
-                                  xMemTableOcorrencia.FieldByName('tipousuario').AsString,
-                                  xMemTableOcorrencia.FieldByName('nome').AsString,
-                                  xMemTableOcorrencia.FieldByName('telefone').AsString,
-                                  xMemTableOcorrencia.FieldByName('bairro').AsString,
-                                  xMemTableOcorrencia.FieldByName('email').AsString,
-                                  xMemTableOcorrencia.FieldByName('cpf').AsString,
-                                  xMemTableOcorrencia.FieldByName('senha').AsString);
+      xJSON := xArray[I];
+      xJSONAux := xJSON.GetValue<TJSONValue>('usuario');
+      xUsuario := TUsuario.Create(xJSONAux.GetValue<Integer>('id'),
+                                  xJSONAux.GetValue<String>('tipousuario'),
+                                  xJSONAux.GetValue<String>('nome'),
+                                  xJSONAux.GetValue<String>('telefone'),
+                                  xJSONAux.GetValue<String>('bairro'),
+                                  xJSONAux.GetValue<String>('email'),
+                                  xJSONAux.GetValue<String>('cpf'),
+                                  xJSONAux.GetValue<String>('senha'));
 
-      xMemTableOcorrencia.LoadFromJSON(xMemTable.FieldByName('endereco').AsString);
-      xEndereco := TEndereco.Create(xMemTableOcorrencia.FieldByName('id').AsInteger,
-                                    xMemTableOcorrencia.FieldByName('numero').AsInteger,
-                                    xMemTableOcorrencia.FieldByName('cep').AsString,
-                                    xMemTableOcorrencia.FieldByName('bairro').AsString,
-                                    xMemTableOcorrencia.FieldByName('logradouro').AsString,
-                                    xMemTableOcorrencia.FieldByName('complemento').AsString);
+      xJSONAux := xJSON.GetValue<TJSONValue>('endereco');
+      xEndereco := TEndereco.Create(xJSONAux.GetValue<Integer>('numero'),
+                                    xJSONAux.GetValue<String>('cep'),
+                                    xJSONAux.GetValue<String>('bairro'),
+                                    xJSONAux.GetValue<String>('logradouro'),
+                                    xJSONAux.GetValue<String>('complemento'),
+                                    xJSONAux.GetValue<Integer>('id'));
 
-      FOcorrencias.Add(TOcorrencia.Create(xMemTable.FieldByName('id').AsInteger,
-                                    xMemTable.FieldByName('qntapoio').AsInteger,
-                                    xMemTable.FieldByName('dataInicial').AsDateTime,
-                                    xMemTable.FieldByName('dataFinal').AsDateTime,
-                                    xMemTable.FieldByName('dataAlteracao').AsDateTime,
-                                    xMemTable.FieldByName('urgencia').AsInteger,
-                                    xMemTable.FieldByName('descricao').AsString,
-                                    xMemTable.FieldByName('tipoProblema').AsString,
-                                    xMemTable.FieldByName('status').AsString,
-                                    xUsuario,
-                                    xEndereco));
-      xMemTable.Next;
+      xDataNula := TUtilsFunctions.IIF<Boolean>(
+        xJSON.GetValue<String>('datafinal') = EmptyStr, True, False);
+
+      if xDataNula then
+        xDataFinal := 0
+      else
+        xDataFinal := ISO8601ToDate(xJSON.GetValue<String>('datafinal'));
+
+      xDataNula := TUtilsFunctions.IIF<Boolean>(
+        xJSON.GetValue<String>('dataalteracao') = EmptyStr, True, False);
+
+      if xDataNula then
+        xDataAlteracao := 0
+      else
+        xDataAlteracao := ISO8601ToDate(xJSON.GetValue<String>('dataalteracao'));
+
+      FOcorrencias.Add(
+        TOcorrencia.Create( xJSON.GetValue<Integer>('id'),
+                            xJSON.GetValue<Integer>('qntapoio'),
+                            ISO8601ToDate(xJSON.GetValue<String>('datainicial')),
+                            xDataFinal,
+                            xDataAlteracao,
+                            xJSON.GetValue<Integer>('urgencia'),
+                            xJSON.GetValue<String>('descricao'),
+                            xJSON.GetValue<String>('tipoProblema'),
+                            xJSON.GetValue<String>('status'),
+                            xUsuario,
+                            xEndereco));
     end;
   finally
-    FreeAndNil(xMemTable);
-    FreeAndNil(xMemTableOcorrencia);
+    FreeAndNil(xJSONAux);
   end;
 end;
 
@@ -362,9 +387,9 @@ begin
       API_CRIADO:
         Exit;
       API_NAO_AUTORIZADO:
-        raise Exception.Create('Usuário não autorizado.');
+        raise Exception.Create('Usuï¿½rio nï¿½o autorizado.');
       else
-        raise Exception.Create('Erro não catalogado.');
+        raise Exception.Create('Erro nï¿½o catalogado.');
     end;
   except
     on e: exception do

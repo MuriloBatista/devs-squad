@@ -18,7 +18,7 @@ type
     RectSenha: TRectangle;
     RectEntrar: TRectangle;
     lblEntrar: TLabel;
-    Label1: TLabel;
+    lblEntreComCPF: TLabel;
     Label2: TLabel;
     CircInfo: TCircle;
     CircFechar: TCircle;
@@ -72,6 +72,7 @@ begin
   try
     TServiceLogin(xServiceLogin).Autenticar;
     Self.AbrirHome;
+    frmAutenticacao.Close
   except
     on e: exception do
       raise Exception.Create('Login: ' + e.Message);

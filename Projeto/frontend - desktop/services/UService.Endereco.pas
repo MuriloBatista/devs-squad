@@ -24,7 +24,11 @@ type
     procedure Listar; override;
     procedure Excluir; override;
 
+    //
+    procedure ListarBairro(const aBairro: String);
+
     function ObterRegistro(const aId: Integer): TObject; override;
+    function ObterId(const aEndereco: TEndereco) : Integer;
 
     property Enderecos: TObjectList<TEndereco> read GetEnderecos;
   end;
@@ -37,7 +41,7 @@ uses
   UUtils.Constants,
   DataSet.Serialize,
   FireDAC.comp.Client,
-  UService.Intf;
+  UService.Intf, System.JSON, REST.Client;
 
 { TServiceEndereco }
 
@@ -112,12 +116,12 @@ begin
 
           while not xMemTable.Eof do
           begin
-            FEnderecos.Add(TEndereco.Create(xMemTable.FieldByName('Id').AsInteger,
-                                    xMemTable.FieldByName('Numero').AsInteger,
-                                    xMemTable.FieldByName('Cep').AsString,
-                                    xMemTable.FieldByName('Bairro').AsString,
-                                    xMemTable.FieldByName('Logradouro').AsString,
-                                    xMemTable.FieldByName('Complemento').AsString));
+            FEnderecos.Add(TEndereco.Create(xMemTable.FieldByName('Numero').AsInteger,
+                                            xMemTable.FieldByName('Cep').AsString,
+                                            xMemTable.FieldByName('Bairro').AsString,
+                                            xMemTable.FieldByName('Logradouro').AsString,
+                                            xMemTable.FieldByName('Complemento').AsString,
+                                            xMemTable.FieldByName('Id').AsInteger));
 
             xMemTable.Next;
           end;
@@ -133,6 +137,85 @@ begin
     end;
   finally
     FreeAndNil(xMemTable);
+  end;
+end;
+
+procedure TServiceEndereco.ListarBairro(const aBairro: String);
+var
+  xMemTable: TFDMemTable;
+begin
+  FEnderecos.Clear;
+
+  xMemTable := TFDMemTable.Create(nil);
+
+  try
+    try
+      FRESTClient.BaseURL := URL_BASE_ENDERECOS;
+      FRESTRequest.Method := rmGet;
+      FRESTRequest.Execute;
+
+      case FRESTResponse.StatusCode of
+        API_SUCESSO:
+        begin
+          xMemTable.LoadFromJSON(FRESTResponse.Content);
+
+          while not xMemTable.Eof do
+          begin
+            FEnderecos.Add(TEndereco.Create(xMemTable.FieldByName('Numero').AsInteger,
+                                            xMemTable.FieldByName('Cep').AsString,
+                                            xMemTable.FieldByName('Bairro').AsString,
+                                            xMemTable.FieldByName('Logradouro').AsString,
+                                            xMemTable.FieldByName('Complemento').AsString,
+                                            xMemTable.FieldByName('Id').AsInteger));
+
+            xMemTable.Next;
+          end;
+        end;
+        API_NAO_AUTORIZADO:
+          raise Exception.Create('Usuário não autorizado.');
+        else
+          raise Exception.Create('Erro ao carregar a lista de Endereços. Código do Erro: ' + FRESTResponse.StatusCode.ToString);
+      end;
+    except
+      on e: exception do
+        raise Exception.Create(e.Message);
+    end;
+  finally
+    FreeAndNil(xMemTable);
+  end;
+end;
+
+function TServiceEndereco.ObterId(const aEndereco: TEndereco): Integer;
+var
+  xMemTable: TFDMemTable;
+  xJSON : TJSONObject;
+begin
+  Result := 0;
+
+  xMemTable := TFDMemTable.Create(nil);
+  xJSON := TJSONObject.Create;
+  try
+//
+//    xJSON.AddPair('cep', FEndereco.Cep);
+//    xJSON.AddPair('bairro', FEndereco.Bairro);
+//    xJSON.AddPair('numero', FEndereco.Numero.ToString);
+//    xJSON.AddPair('logradouro', FEndereco.Logradouro);
+//    xJSON.AddPair('complemento', FEndereco.Complemento);
+
+    FRESTClient.BaseURL := URL_BASE_ENDERECOS + '/id';
+    FRESTRequest.Method := rmPOST;
+    FRESTRequest.Params.AddBody(FEndereco.JSON);
+    FRESTRequest.Execute;
+
+    if FRESTResponse.StatusCode = API_SUCESSO then
+    begin
+      TryStrToInt(FRESTResponse.Content, Result);
+//
+//      if xMemTable.FindFirst then
+//        Result := StrToInt(FRESTResponse.Content);
+    end;
+  finally
+    FreeAndNil(xJSON);
   end;
 end;
 
